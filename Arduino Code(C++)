@@ -1,0 +1,85 @@
+#include <DHT.h>
+#include <SoftwareSerial.h>
+
+#define DHTPIN 2
+#define DHTTYPE DHT11
+
+#define VIBRATION_PIN A0
+#define SOUND_PIN A1
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// WiFi module pins
+SoftwareSerial esp(9, 10); // RX, TX
+
+String apiKey = "YOUR_THINGSPEAK_API_KEY";
+String ssid = "YOUR_WIFI_NAME";
+String password = "YOUR_WIFI_PASSWORD";
+
+void setup() {
+  Serial.begin(9600);
+  esp.begin(9600);
+  dht.begin();
+
+  connectWiFi();
+}
+
+void loop() {
+
+  float temperature = dht.readTemperature();
+  int vibration = analogRead(VIBRATION_PIN);
+  int sound = analogRead(SOUND_PIN);
+
+  String status = checkStatus(temperature, vibration, sound);
+
+  sendData(temperature, vibration, sound, status);
+
+  delay(15000);  // ThingSpeak allows update every 15 sec
+}
+
+String checkStatus(float temp, int vib, int sound) {
+  int alertCount = 0;
+
+  if (temp > 50) alertCount++;
+  if (vib > 600) alertCount++;
+  if (sound > 500) alertCount++;
+
+  if (alertCount >= 2)
+    return "Critical";
+  else if (alertCount == 1)
+    return "Warning";
+  else
+    return "Healthy";
+}
+
+void connectWiFi() {
+  esp.println("AT");
+  delay(2000);
+
+  esp.println("AT+CWMODE=1");
+  delay(2000);
+
+  String cmd = "AT+CWJAP=\"" + ssid + "\",\"" + password + "\"";
+  esp.println(cmd);
+  delay(5000);
+}
+
+void sendData(float temp, int vib, int sound, String status) {
+
+  String data = "GET /update?api_key=" + apiKey +
+                "&field1=" + String(temp) +
+                "&field2=" + String(vib) +
+                "&field3=" + String(sound) +
+                "&field4=" + status;
+
+  esp.println("AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80");
+  delay(2000);
+
+  esp.println("AT+CIPSEND=" + String(data.length() + 4));
+  delay(2000);
+
+  esp.println(data);
+  delay(2000);
+
+  esp.println("AT+CIPCLOSE");
+}
